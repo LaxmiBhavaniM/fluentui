@@ -858,7 +858,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         >
           <FocusZone
             direction={FocusZoneDirection.bidirectional}
-            isCircularNavigation={true}
+            //isCircularNavigation={true}
             handleTabKey={FocusZoneTabbableElements.all}
           >
             <svg width={width} height={height} id={this._chartId}>
@@ -1036,7 +1036,8 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
               id={nodeId}
               onMouseOver={this._onHover.bind(this, singleNode)}
               onMouseOut={onMouseOut}
-              onFocus={this._onCloseCallout.bind(this)}
+              onFocus={this._onNodeFocus.bind(this, singleNode)}
+              onBlur={onMouseOut}
               stroke={this._fillNodeBorder(singleNode)}
               strokeWidth="2"
               opacity="1"
@@ -1110,6 +1111,28 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         selectedLinks: new Set<number>(Array.from(selectedLinks).map(link => link.index!)),
         selectedNode: singleNode,
         refSelected: mouseEvent, //this._refArray.get(index),
+        isCalloutVisible: singleNode.y1! - singleNode.y0! < MIN_HEIGHT_FOR_TYPE,
+        color: singleNode.color,
+        xCalloutValue: singleNode.name,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        yCalloutValue: singleNode.actualValue! as any as string,
+      });
+    }
+  }
+
+  private _onNodeFocus(singleNode: SNode, focusEvent: React.FocusEvent<SVGElement>) {
+    //mouseEvent.persist();
+    this._onCloseCallout();
+    if (!this.state.selectedState) {
+      const selectedLinks = getSelectedLinks(singleNode);
+      const selectedNodes = getSelectedNodes(selectedLinks);
+      selectedNodes.push(singleNode);
+      this.setState({
+        selectedState: true,
+        selectedNodes: new Set<number>(Array.from(selectedNodes).map(node => node.index)),
+        selectedLinks: new Set<number>(Array.from(selectedLinks).map(link => link.index!)),
+        selectedNode: singleNode,
+        refSelected: focusEvent, //this._refArray.get(index),
         isCalloutVisible: singleNode.y1! - singleNode.y0! < MIN_HEIGHT_FOR_TYPE,
         color: singleNode.color,
         xCalloutValue: singleNode.name,
