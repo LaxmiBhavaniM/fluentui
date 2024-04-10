@@ -462,6 +462,8 @@ type RenderedLinkAttributes = {
   readonly reactId: string;
   readonly aria: string;
   readonly from: string;
+  readonly countUnit: string;
+  readonly abbreviateCounts: boolean;
 };
 
 type TSpanForTextMeasuring = D3Selection<SVGTSpanElement, unknown, HTMLElement, unknown>;
@@ -540,6 +542,8 @@ function computeLinkAttributes(
   links: SLink[],
   linkFrom: (node: SNode) => string,
   linkAriaLabel: (link: SLink) => string,
+  countUnit: string,
+  abbreviateCounts: boolean,
 ): LinkItemValues<RenderedLinkAttributes> {
   const result: LinkItemValues<RenderedLinkAttributes> = {};
   links.forEach((link: SLink) => {
@@ -553,6 +557,8 @@ function computeLinkAttributes(
       reactId: getId('link'),
       from: linkFrom(link.source as SNode),
       aria: linkAriaLabel(link),
+      countUnit,
+      abbreviateCounts,
     };
   });
 
@@ -609,6 +615,8 @@ function nodeTextColor(state: Readonly<ISankeyChartState>, singleNode: SNode): s
 
 type StringRenderer = {
   linkFrom: (node: SNode) => string;
+  countUnit: string;
+  abbreviateCount: boolean;
 };
 
 type AccessibilityRenderer = {
@@ -620,6 +628,8 @@ type AccessibilityRenderer = {
 function linkCalloutAttributes(
   singleLink: SLink,
   from: string,
+  countUnit: string,
+  abbreviateCount: boolean,
 ): IChartHoverCardProps & {
   selectedLink: SLink;
   isCalloutVisible: boolean;
@@ -633,7 +643,9 @@ function linkCalloutAttributes(
     isCalloutVisible: true,
     color: (singleLink.source as SNode).color!,
     xCalloutValue: (singleLink.target as SNode).name,
-    yCalloutValue: singleLink.unnormalizedValue!.toString(),
+    yCalloutValue: singleLink.unnormalizedValue
+      ? (abbreviateCount ? formatNumber(singleLink.unnormalizedValue) : singleLink.unnormalizedValue) + countUnit
+      : singleLink.unnormalizedValue!.toString(),
     descriptionMessage: from,
   };
 }
@@ -680,10 +692,14 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     nodes: SNode[],
     nodeAttributes: ItemValues<RenderedNodeAttributes>,
     tooltipDiv: TooltipDiv,
+    countUnit: string,
+    abbreviateCount: boolean,
   ) => React.ReactNode[] | undefined;
   private readonly _fetchLinks: (
     links: SLink[],
     linkAttributes: LinkItemValues<RenderedLinkAttributes>,
+    countUnit: string,
+    abbreviateCount: boolean,
   ) => React.ReactNode[] | undefined;
 
   private readonly _strings: StringRenderer;
@@ -750,6 +766,8 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
       // by the caller.
       return {
         linkFrom: (node: SNode) => format(fromString, node.name),
+        countUnit: props.strings?.countUnit || '',
+        abbreviateCount: props.strings?.abbreviateCount || false,
       };
     })(props.strings);
     this._accessibility = memoizeFunction((accessibility?: ISankeyChartAccessibilityProps): AccessibilityRenderer => {
@@ -773,10 +791,12 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
       nodes: SNode[],
       nodeAttributes: ItemValues<RenderedNodeAttributes>,
       tooltipDiv: TooltipDiv,
-    ) => this._createNodes(classNames, nodes, nodeAttributes, tooltipDiv);
+      countUnit: string,
+      abbreviateCount: boolean,
+    ) => this._createNodes(classNames, nodes, nodeAttributes, tooltipDiv, countUnit, abbreviateCount);
     this._linkAttributes = memoizeFunction(
       (links: SLink[], linkFrom: (node: SNode) => string, linkAriaLabel: (link: SLink) => string) =>
-        computeLinkAttributes(links, linkFrom, linkAriaLabel),
+        computeLinkAttributes(links, linkFrom, linkAriaLabel, this._strings.countUnit, this._strings.abbreviateCount),
     );
     this._fetchLinks = (links: SLink[], linkAttributes: LinkItemValues<RenderedLinkAttributes>) =>
       this._createLinks(links, linkAttributes);
@@ -830,9 +850,16 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
       // Pre-compute some important attributes about nodes, specifically text
       const nodeAttributes = this._nodeAttributes(nodes, this._accessibility.nodeAriaLabel);
       // Build the nodes and links as rendered in the UX.
-      const nodeData = this._fetchNodes(classNames, nodes, nodeAttributes, tooltipDiv);
+      const nodeData = this._fetchNodes(
+        classNames,
+        nodes,
+        nodeAttributes,
+        tooltipDiv,
+        this._strings.countUnit,
+        this._strings.abbreviateCount,
+      );
       const linkAttributes = this._linkAttributes(links, this._strings.linkFrom, this._accessibility.linkAriaLabel);
-      const linkData = this._fetchLinks(links, linkAttributes);
+      const linkData = this._fetchLinks(links, linkAttributes, this._strings.countUnit, this._strings.abbreviateCount);
 
       const calloutProps = {
         isCalloutVisible: state.isCalloutVisible,
@@ -960,7 +987,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         const onMouseOut = () => {
           this._onStreamLeave(singleLink);
         };
-        const { reactId, from, aria } = linkValue(linkAttributes, singleLink);
+        const { reactId, from, aria, countUnit, abbreviateCounts } = linkValue(linkAttributes, singleLink);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const dataPoints: Array<any> = linkToDataPoints(singleLink as unknown as SankeyLinkWithPositions);
         const key = `${linkId}-${index}`;
@@ -984,9 +1011,9 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
               stroke={this._fillStreamBorder(singleLink, gradientUrl)}
               strokeWidth="2"
               strokeOpacity={this._getOpacityStreamBorder(singleLink)}
-              onMouseOver={event => this._onStreamHover(event, singleLink, from)}
+              onMouseOver={event => this._onStreamHover(event, singleLink, from, countUnit, abbreviateCounts)}
               onMouseOut={onMouseOut}
-              onFocus={event => this._onFocusLink(event, singleLink, from)}
+              onFocus={event => this._onFocusLink(event, singleLink, from, countUnit, abbreviateCounts)}
               onBlur={this._onBlur}
               fillOpacity={this._getOpacityStream(singleLink)}
               data-is-focusable={true}
@@ -1005,6 +1032,8 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     dataNodes: SNode[],
     nodeAttributes: ItemValues<RenderedNodeAttributes>,
     tooltipDiv: TooltipDiv,
+    countUnit: string,
+    abbreviateCount: boolean,
   ): React.ReactNode[] | undefined {
     if (dataNodes) {
       const state = this.state;
@@ -1024,6 +1053,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         } = nodeAttributes[singleNode.nodeId];
         const tooTall = height > MIN_HEIGHT_FOR_DOUBLINE_TYPE;
         const { name, actualValue, x0, x1, y0 } = singleNode;
+        const formattedValue = actualValue && abbreviateCount ? formatNumber(actualValue) : actualValue;
         const textColor = nodeTextColor(state, singleNode);
         return (
           <g key={index} id={gElementId}>
@@ -1034,7 +1064,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
               width={x1! - x0!}
               fill={this._fillNodeColors(singleNode)}
               id={nodeId}
-              onMouseOver={this._onHover.bind(this, singleNode)}
+              onMouseOver={this._onHover.bind(this, singleNode, countUnit, abbreviateCount)}
               onMouseOut={onMouseOut}
               onFocus={this._onCloseCallout.bind(this)}
               stroke={this._fillNodeBorder(singleNode)}
@@ -1076,7 +1106,8 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
                   fill={textColor}
                   fontSize={14}
                 >
-                  {actualValue}
+                  {formattedValue}
+                  {countUnit}
                 </text>
               </g>
             )}
@@ -1097,13 +1128,19 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     }
   }
 
-  private _onHover(singleNode: SNode, mouseEvent: React.MouseEvent<SVGElement>) {
+  private _onHover(
+    singleNode: SNode,
+    countUnit: string,
+    abbreviateCount: boolean,
+    mouseEvent: React.MouseEvent<SVGElement>,
+  ) {
     mouseEvent.persist();
     this._onCloseCallout();
     if (!this.state.selectedState) {
       const selectedLinks = getSelectedLinks(singleNode);
       const selectedNodes = getSelectedNodes(selectedLinks);
       selectedNodes.push(singleNode);
+      const actualValue = singleNode.actualValue;
       this.setState({
         selectedState: true,
         selectedNodes: new Set<number>(Array.from(selectedNodes).map(node => node.index)),
@@ -1114,12 +1151,20 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         color: singleNode.color,
         xCalloutValue: singleNode.name,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        yCalloutValue: singleNode.actualValue! as any as string,
+        yCalloutValue: (actualValue
+          ? (abbreviateCount ? formatNumber(actualValue) : actualValue) + countUnit
+          : actualValue)! as string,
       });
     }
   }
 
-  private _onStreamHover(mouseEvent: React.MouseEvent<SVGElement>, singleLink: SLink, from: string) {
+  private _onStreamHover(
+    mouseEvent: React.MouseEvent<SVGElement>,
+    singleLink: SLink,
+    from: string,
+    countUnit: string,
+    abbreviateCount: boolean,
+  ) {
     mouseEvent.persist();
     this._onCloseCallout();
     if (!this.state.selectedState) {
@@ -1129,7 +1174,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         selectedNodes: new Set<number>(Array.from(selectedNodes).map(node => node.index!)),
         selectedLinks: new Set<number>(Array.from(selectedLinks).map(link => link.index!)),
         refSelected: mouseEvent,
-        ...linkCalloutAttributes(singleLink, from),
+        ...linkCalloutAttributes(singleLink, from, countUnit, abbreviateCount),
       });
     }
   }
@@ -1145,7 +1190,13 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     }
   }
 
-  private _onFocusLink(element: React.FocusEvent<SVGElement>, singleLink: SLink, from: string): void {
+  private _onFocusLink(
+    element: React.FocusEvent<SVGElement>,
+    singleLink: SLink,
+    from: string,
+    countUnit: string,
+    abbreviateCount: boolean,
+  ): void {
     // There is a big difference in how "Tab" and the "Arrow keys" are handled in this diagram.
     // In particular, I would expect the "Down" key to be like "Tab", but it jumps a little wildly. I'm not sure
     // if this behavior is an accessiblity violation, but it we might want to investigate it.
@@ -1153,7 +1204,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     this._onCloseCallout();
     this.setState({
       refSelected: element.currentTarget,
-      ...linkCalloutAttributes(singleLink, from),
+      ...linkCalloutAttributes(singleLink, from, countUnit, abbreviateCount),
     });
   }
 
@@ -1276,4 +1327,16 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     const sankeyChartData = this.props.data?.SankeyChartData;
     return !(sankeyChartData && sankeyChartData.nodes.length > 0 && sankeyChartData.links.length > 0);
   }
+}
+
+function formatNumber(num: number) {
+  // Use the toLocaleString method to add suffixes to the number
+  return num.toLocaleString('en-US', {
+    // add suffixes for thousands, millions, and billions
+    // the maximum number of decimal places to use
+    maximumFractionDigits: 2,
+    // specify the abbreviations to use for the suffixes
+    notation: 'compact',
+    compactDisplay: 'short',
+  });
 }

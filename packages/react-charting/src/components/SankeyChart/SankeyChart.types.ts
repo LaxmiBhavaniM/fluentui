@@ -133,6 +133,8 @@ export interface ISankeyChartStrings {
    * This is shown in the `ChartHoverCard` when the user hovers the mouse over a link.
    */
   linkFrom?: string;
+  countUnit?: string;
+  abbreviateCount?: boolean;
 }
 
 /**
