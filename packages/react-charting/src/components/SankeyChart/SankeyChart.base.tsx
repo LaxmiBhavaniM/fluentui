@@ -620,6 +620,7 @@ type AccessibilityRenderer = {
 function linkCalloutAttributes(
   singleLink: SLink,
   from: string,
+  formatNumber?: (num: number | undefined) => string,
 ): IChartHoverCardProps & {
   selectedLink: SLink;
   isCalloutVisible: boolean;
@@ -633,7 +634,7 @@ function linkCalloutAttributes(
     isCalloutVisible: true,
     color: (singleLink.source as SNode).color!,
     xCalloutValue: (singleLink.target as SNode).name,
-    yCalloutValue: singleLink.unnormalizedValue!.toString(),
+    yCalloutValue: formatNumber ? formatNumber(singleLink.unnormalizedValue) : singleLink.unnormalizedValue!.toString(),
     descriptionMessage: from,
   };
 }
@@ -752,14 +753,21 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         linkFrom: (node: SNode) => format(fromString, node.name),
       };
     })(props.strings);
+    const formatNumber = props.formatNumber;
     this._accessibility = memoizeFunction((accessibility?: ISankeyChartAccessibilityProps): AccessibilityRenderer => {
       const linkString = accessibility?.linkAriaLabel || 'link from {0} to {1} with weight {2}';
       const nodeString = accessibility?.nodeAriaLabel || 'node {0} with weight {1}';
       return {
         emptyAriaLabel: accessibility?.emptyAriaLabel || 'Graph has no data to display',
         linkAriaLabel: (link: SLink) =>
-          format(linkString, (link.source as SNode).name, (link.target as SNode).name, link.unnormalizedValue),
-        nodeAriaLabel: (node: SNode, weight: number) => format(nodeString, node.name, weight),
+          format(
+            linkString,
+            (link.source as SNode).name,
+            (link.target as SNode).name,
+            formatNumber ? formatNumber(link.unnormalizedValue) : link.unnormalizedValue,
+          ),
+        nodeAriaLabel: (node: SNode, weight: number) =>
+          format(nodeString, node.name, formatNumber ? formatNumber(weight) : weight),
       };
     })(props.accessibility);
     // NOTE: Memoizing the `_createNodes` and `_createLinks` methods would break the hoverability of the chart
@@ -773,13 +781,13 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
       nodes: SNode[],
       nodeAttributes: ItemValues<RenderedNodeAttributes>,
       tooltipDiv: TooltipDiv,
-    ) => this._createNodes(classNames, nodes, nodeAttributes, tooltipDiv);
+    ) => this._createNodes(classNames, nodes, nodeAttributes, tooltipDiv, props.formatNumber);
     this._linkAttributes = memoizeFunction(
       (links: SLink[], linkFrom: (node: SNode) => string, linkAriaLabel: (link: SLink) => string) =>
         computeLinkAttributes(links, linkFrom, linkAriaLabel),
     );
     this._fetchLinks = (links: SLink[], linkAttributes: LinkItemValues<RenderedLinkAttributes>) =>
-      this._createLinks(links, linkAttributes);
+      this._createLinks(links, linkAttributes, props.formatNumber);
     // Our shorter path to performance is to pre-compute the truncated labels of each node because
     // that should not change based on the position of the mouse. This is a shorter path becase the code which
     // computes the truncated labels creates and destroys a `tempText` element in the DOM. This is causing a
@@ -953,6 +961,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
   private _createLinks(
     dataLinks: SLink[],
     linkAttributes: LinkItemValues<RenderedLinkAttributes>,
+    formatNumber?: (num: number | undefined) => string,
   ): React.ReactNode[] | undefined {
     if (dataLinks) {
       const linkId = this._linkId;
@@ -984,9 +993,9 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
               stroke={this._fillStreamBorder(singleLink, gradientUrl)}
               strokeWidth="2"
               strokeOpacity={this._getOpacityStreamBorder(singleLink)}
-              onMouseOver={event => this._onStreamHover(event, singleLink, from)}
+              onMouseOver={event => this._onStreamHover(event, singleLink, from, formatNumber)}
               onMouseOut={onMouseOut}
-              onFocus={event => this._onFocusLink(event, singleLink, from)}
+              onFocus={event => this._onFocusLink(event, singleLink, from, formatNumber)}
               onBlur={this._onBlur}
               fillOpacity={this._getOpacityStream(singleLink)}
               data-is-focusable={true}
@@ -1005,6 +1014,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     dataNodes: SNode[],
     nodeAttributes: ItemValues<RenderedNodeAttributes>,
     tooltipDiv: TooltipDiv,
+    formatNumber?: (num: number | undefined) => string,
   ): React.ReactNode[] | undefined {
     if (dataNodes) {
       const state = this.state;
@@ -1076,7 +1086,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
                   fill={textColor}
                   fontSize={14}
                 >
-                  {actualValue}
+                  {formatNumber ? formatNumber(actualValue) : actualValue}
                 </text>
               </g>
             )}
@@ -1097,7 +1107,11 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     }
   }
 
-  private _onHover(singleNode: SNode, mouseEvent: React.MouseEvent<SVGElement>) {
+  private _onHover(
+    singleNode: SNode,
+    mouseEvent: React.MouseEvent<SVGElement>,
+    formatNumber?: (num: number | undefined) => string,
+  ) {
     mouseEvent.persist();
     this._onCloseCallout();
     if (!this.state.selectedState) {
@@ -1114,12 +1128,17 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         color: singleNode.color,
         xCalloutValue: singleNode.name,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        yCalloutValue: singleNode.actualValue! as any as string,
+        yCalloutValue: formatNumber ? formatNumber(singleNode.actualValue) : (singleNode.actualValue! as any as string),
       });
     }
   }
 
-  private _onStreamHover(mouseEvent: React.MouseEvent<SVGElement>, singleLink: SLink, from: string) {
+  private _onStreamHover(
+    mouseEvent: React.MouseEvent<SVGElement>,
+    singleLink: SLink,
+    from: string,
+    formatNumber?: (num: number | undefined) => string,
+  ) {
     mouseEvent.persist();
     this._onCloseCallout();
     if (!this.state.selectedState) {
@@ -1129,7 +1148,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         selectedNodes: new Set<number>(Array.from(selectedNodes).map(node => node.index!)),
         selectedLinks: new Set<number>(Array.from(selectedLinks).map(link => link.index!)),
         refSelected: mouseEvent,
-        ...linkCalloutAttributes(singleLink, from),
+        ...linkCalloutAttributes(singleLink, from, formatNumber),
       });
     }
   }
@@ -1145,7 +1164,12 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     }
   }
 
-  private _onFocusLink(element: React.FocusEvent<SVGElement>, singleLink: SLink, from: string): void {
+  private _onFocusLink(
+    element: React.FocusEvent<SVGElement>,
+    singleLink: SLink,
+    from: string,
+    formatNumber?: (num: number | undefined) => string,
+  ): void {
     // There is a big difference in how "Tab" and the "Arrow keys" are handled in this diagram.
     // In particular, I would expect the "Down" key to be like "Tab", but it jumps a little wildly. I'm not sure
     // if this behavior is an accessiblity violation, but it we might want to investigate it.
@@ -1153,7 +1177,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     this._onCloseCallout();
     this.setState({
       refSelected: element.currentTarget,
-      ...linkCalloutAttributes(singleLink, from),
+      ...linkCalloutAttributes(singleLink, from, formatNumber),
     });
   }
 
