@@ -781,13 +781,13 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
       nodes: SNode[],
       nodeAttributes: ItemValues<RenderedNodeAttributes>,
       tooltipDiv: TooltipDiv,
-    ) => this._createNodes(classNames, nodes, nodeAttributes, tooltipDiv, props.formatNumber);
+    ) => this._createNodes(classNames, nodes, nodeAttributes, tooltipDiv, formatNumber);
     this._linkAttributes = memoizeFunction(
       (links: SLink[], linkFrom: (node: SNode) => string, linkAriaLabel: (link: SLink) => string) =>
         computeLinkAttributes(links, linkFrom, linkAriaLabel),
     );
     this._fetchLinks = (links: SLink[], linkAttributes: LinkItemValues<RenderedLinkAttributes>) =>
-      this._createLinks(links, linkAttributes, props.formatNumber);
+      this._createLinks(links, linkAttributes, formatNumber);
     // Our shorter path to performance is to pre-compute the truncated labels of each node because
     // that should not change based on the position of the mouse. This is a shorter path becase the code which
     // computes the truncated labels creates and destroys a `tempText` element in the DOM. This is causing a
