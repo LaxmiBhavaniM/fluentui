@@ -1044,7 +1044,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
               width={x1! - x0!}
               fill={this._fillNodeColors(singleNode)}
               id={nodeId}
-              onMouseOver={this._onHover.bind(this, singleNode)}
+              onMouseOver={event => this._onHover(singleNode, event, formatNumber)}
               onMouseOut={onMouseOut}
               onFocus={this._onCloseCallout.bind(this)}
               stroke={this._fillNodeBorder(singleNode)}

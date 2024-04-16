@@ -163,8 +163,22 @@ describe('Sankey Chart snapShot testing', () => {
           nodes: [
             { nodeId: 0, name: 'First' },
             { nodeId: 1, name: 'Second' },
+            { nodeId: 2, name: 'Third' },
+            { nodeId: 3, name: 'Fourth' },
+            { nodeId: 4, name: 'Five' },
+            { nodeId: 5, name: 'Six' },
+            { nodeId: 6, name: 'Seven' },
           ],
-          links: [{ source: 0, target: 1, value: 12345678 }],
+          links: [
+            { source: 0, target: 1, value: 1234567890 },
+            { source: 0, target: 2, value: 100000000 },
+            { source: 0, target: 5, value: 1234 },
+            { source: 0, target: 6, value: 100 },
+            { source: 1, target: 3, value: 1000000000 },
+            { source: 1, target: 4, value: 234567890 },
+            { source: 2, target: 3, value: 1000 },
+            { source: 2, target: 4, value: 9999000 },
+          ],
         },
       };
       const strings: ISankeyChartStrings = {
