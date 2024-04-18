@@ -690,6 +690,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
 
   private readonly _strings: StringRenderer;
   private readonly _accessibility: AccessibilityRenderer;
+  private _numberFormatter: NumberFormatter;
 
   constructor(props: ISankeyChartProps) {
     super(props);
@@ -755,8 +756,6 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
       };
     })(props.strings);
 
-    const numberFormatter = props.formatNumber || this._numberFormatterAlt;
-
     this._accessibility = memoizeFunction((accessibility?: ISankeyChartAccessibilityProps): AccessibilityRenderer => {
       const linkString = accessibility?.linkAriaLabel || 'link from {0} to {1} with weight {2}';
       const nodeString = accessibility?.nodeAriaLabel || 'node {0} with weight {1}';
@@ -767,9 +766,9 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
             linkString,
             (link.source as SNode).name,
             (link.target as SNode).name,
-            numberFormatter(link.unnormalizedValue),
+            this._numberFormatter(link.unnormalizedValue),
           ),
-        nodeAriaLabel: (node: SNode, weight: number) => format(nodeString, node.name, numberFormatter(weight)),
+        nodeAriaLabel: (node: SNode, weight: number) => format(nodeString, node.name, this._numberFormatter(weight)),
       };
     })(props.accessibility);
     // NOTE: Memoizing the `_createNodes` and `_createLinks` methods would break the hoverability of the chart
@@ -783,13 +782,13 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
       nodes: SNode[],
       nodeAttributes: ItemValues<RenderedNodeAttributes>,
       tooltipDiv: TooltipDiv,
-    ) => this._createNodes(classNames, nodes, nodeAttributes, tooltipDiv, numberFormatter);
+    ) => this._createNodes(classNames, nodes, nodeAttributes, tooltipDiv, this._numberFormatter);
     this._linkAttributes = memoizeFunction(
       (links: SLink[], linkFrom: (node: SNode) => string, linkAriaLabel: (link: SLink) => string) =>
         computeLinkAttributes(links, linkFrom, linkAriaLabel),
     );
     this._fetchLinks = (links: SLink[], linkAttributes: LinkItemValues<RenderedLinkAttributes>) =>
-      this._createLinks(links, linkAttributes, numberFormatter);
+      this._createLinks(links, linkAttributes, this._numberFormatter);
     // Our shorter path to performance is to pre-compute the truncated labels of each node because
     // that should not change based on the position of the mouse. This is a shorter path becase the code which
     // computes the truncated labels creates and destroys a `tempText` element in the DOM. This is causing a
@@ -812,6 +811,10 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
   }
 
   public render(): React.ReactNode {
+    this._numberFormatter = memoizeFunction((formatter?: NumberFormatter) => {
+      return formatter || this._numberFormatterAlt;
+    })(this.props.formatNumber);
+
     if (!this._isChartEmpty()) {
       const { theme, className, styles, pathColor, colorsForNodes, borderColorsForNodes } = this.props;
       const state = this.state;

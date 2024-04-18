@@ -13,39 +13,32 @@ enum FormatType {
   percentage,
 }
 
-const width = 500;
+const width = 800;
 const height = 412;
+
+const shortFormatter = (num: Number | undefined) =>
+  num?.toLocaleString('en-US', {
+    maximumFractionDigits: 2,
+    notation: 'compact',
+    compactDisplay: 'short',
+  }) || '';
+
+const percentageFormatter = (num: Number | undefined) =>
+  num?.toLocaleString('en-US', {
+    style: 'percent',
+  }) || '';
+
+const normalFormatter = (num: Number | undefined) => num?.toString() || '';
+
+const formatFuncMap: Map<FormatType, (num: Number | undefined) => string> = new Map();
+formatFuncMap.set(FormatType.normal, normalFormatter);
+formatFuncMap.set(FormatType.short, shortFormatter);
+formatFuncMap.set(FormatType.percentage, percentageFormatter);
 
 export const SankeyChartNumberFormattingV2: React.FunctionComponent<ISankeyChartProps> = (
   props: ISankeyChartProps,
 ): JSX.Element => {
   const [format, setFormat] = React.useState<FormatType>(FormatType.normal);
-
-  const _formatNumber = React.useCallback(
-    (num: Number | undefined) => {
-      if (num) {
-        console.log('inside' + format);
-        if (format === FormatType.short) {
-          return num.toLocaleString('en-US', {
-            maximumFractionDigits: 2,
-            notation: 'compact',
-            compactDisplay: 'short',
-          });
-        } else if (format === FormatType.percentage) {
-          return num.toLocaleString('en-US', {
-            style: 'percent',
-          });
-        } else {
-          return num.toString();
-        }
-      }
-      return '';
-    },
-    [format],
-  );
-
-  console.log('parent' + format);
-  console.log(_formatNumber(100000000));
 
   const data: IChartProps = {
     chartTitle: 'Sankey Chart',
@@ -99,6 +92,7 @@ export const SankeyChartNumberFormattingV2: React.FunctionComponent<ISankeyChart
 
   return (
     <>
+      <p>{format}</p>
       <label htmlFor="changeHeight_Basic">Change formatting type:</label>
       <input
         type="text"
@@ -116,7 +110,13 @@ export const SankeyChartNumberFormattingV2: React.FunctionComponent<ISankeyChart
           shouldResize={width + height}
           strings={strings}
           accessibility={accessibilityStrings}
-          formatNumber={_formatNumber}
+          formatNumber={
+            format === FormatType.percentage
+              ? percentageFormatter
+              : format === FormatType.short
+              ? shortFormatter
+              : normalFormatter
+          }
         />
       </div>
     </>
