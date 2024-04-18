@@ -110,13 +110,7 @@ export const SankeyChartNumberFormattingV2: React.FunctionComponent<ISankeyChart
           shouldResize={width + height}
           strings={strings}
           accessibility={accessibilityStrings}
-          formatNumber={
-            format === FormatType.percentage
-              ? percentageFormatter
-              : format === FormatType.short
-              ? shortFormatter
-              : normalFormatter
-          }
+          formatNumber={formatFuncMap.get(format)}
         />
       </div>
     </>
