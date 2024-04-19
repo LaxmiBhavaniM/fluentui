@@ -491,8 +491,7 @@ function computeElipsisLength(tspan: TSpanForTextMeasuring): number {
 
 function computeNodeAttributes(
   nodes: SNode[],
-  nodeAriaLabel: (node: SNode, weight: number, formatNumber: NumberFormatter) => string,
-  formatNumber: NumberFormatter,
+  nodeAriaLabel: (node: SNode, weight: number) => string,
 ): ItemValues<RenderedNodeAttributes> {
   const result: ItemValues<RenderedNodeAttributes> = {};
   const weightSpan = select('.nodeName').append('text').attr('class', 'tempText').append('tspan').text(null);
@@ -528,7 +527,7 @@ function computeNodeAttributes(
       reactId: getId('nodeBar'),
       gElementId: getId('nodeGElement'),
       name: truncatedname,
-      aria: nodeAriaLabel(singleNode, nodeValue, formatNumber),
+      aria: nodeAriaLabel(singleNode, nodeValue),
       trimmed: isTruncated,
       height,
       weightOffset: textLengthForNodeWeight,
@@ -541,8 +540,7 @@ function computeNodeAttributes(
 function computeLinkAttributes(
   links: SLink[],
   linkFrom: (node: SNode) => string,
-  linkAriaLabel: (link: SLink, formatNumber: NumberFormatter) => string,
-  formatNumber: NumberFormatter,
+  linkAriaLabel: (link: SLink) => string,
 ): LinkItemValues<RenderedLinkAttributes> {
   const result: LinkItemValues<RenderedLinkAttributes> = {};
   links.forEach((link: SLink) => {
@@ -555,7 +553,7 @@ function computeLinkAttributes(
     sourceToTarget[idFromNumberOrSNode(link.target)] = {
       reactId: getId('link'),
       from: linkFrom(link.source as SNode),
-      aria: linkAriaLabel(link, formatNumber),
+      aria: linkAriaLabel(link),
     };
   });
 
@@ -616,14 +614,13 @@ type StringRenderer = {
 
 type AccessibilityRenderer = {
   emptyAriaLabel: string;
-  nodeAriaLabel: (node: SNode, weight: number, formatNumber: NumberFormatter) => string;
-  linkAriaLabel: (link: SLink, formatNumber: NumberFormatter) => string;
+  nodeAriaLabel: (node: SNode, weight: number) => string;
+  linkAriaLabel: (link: SLink) => string;
 };
 
 function linkCalloutAttributes(
   singleLink: SLink,
   from: string,
-  formatNumber: NumberFormatter,
 ): IChartHoverCardProps & {
   selectedLink: SLink;
   isCalloutVisible: boolean;
@@ -637,7 +634,7 @@ function linkCalloutAttributes(
     isCalloutVisible: true,
     color: (singleLink.source as SNode).color!,
     xCalloutValue: (singleLink.target as SNode).name,
-    yCalloutValue: formatNumber(singleLink.unnormalizedValue),
+    yCalloutValue: this._formatNumber(singleLink.unnormalizedValue),
     descriptionMessage: from,
   };
 }
@@ -647,6 +644,9 @@ function linkCalloutAttributes(
 // https://stackoverflow.com/questions/60223362/fast-way-to-convert-react-class-component-to-functional-component
 // I am concerned that doing so would break this contract, making it difficult for consuming code.
 export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyChartState> {
+  private _formatNumber: NumberFormatter;
+  //private readonly _numberFormatterDefault: NumberFormatter = (num: Number | undefined) => num?.toString() || '';
+
   private chartContainer: HTMLDivElement;
   private _reqID: number;
   private readonly _calloutId: string;
@@ -672,26 +672,22 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
   private readonly _fetchTooltip: (classNames: IProcessedStyleSet<ISankeyChartStyles>) => TooltipDiv;
   private readonly _nodeAttributes: (
     nodes: SNode[],
-    nodeAriaLabel: (node: SNode, weight: number, formatNumber: NumberFormatter) => string,
-    formatNumber: NumberFormatter,
+    nodeAriaLabel: (node: SNode, weight: number) => string,
   ) => ItemValues<RenderedNodeAttributes>;
   private readonly _linkAttributes: (
     links: SLink[],
     linkFrom: (node: SNode) => string,
-    linkAriaLabel: (link: SLink, formatNumber: NumberFormatter) => string,
-    formatNumber: NumberFormatter,
+    linkAriaLabel: (link: SLink) => string,
   ) => LinkItemValues<RenderedLinkAttributes>;
   private readonly _fetchNodes: (
     classNames: IProcessedStyleSet<ISankeyChartStyles>,
     nodes: SNode[],
     nodeAttributes: ItemValues<RenderedNodeAttributes>,
     tooltipDiv: TooltipDiv,
-    formatNumber: NumberFormatter,
   ) => React.ReactNode[] | undefined;
   private readonly _fetchLinks: (
     links: SLink[],
     linkAttributes: LinkItemValues<RenderedLinkAttributes>,
-    formatNumber: NumberFormatter,
   ) => React.ReactNode[] | undefined;
 
   private readonly _strings: StringRenderer;
@@ -765,47 +761,34 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
       const nodeString = accessibility?.nodeAriaLabel || 'node {0} with weight {1}';
       return {
         emptyAriaLabel: accessibility?.emptyAriaLabel || 'Graph has no data to display',
-        linkAriaLabel: (link: SLink, formatNumber: NumberFormatter) =>
+        linkAriaLabel: (link: SLink) =>
           format(
             linkString,
             (link.source as SNode).name,
             (link.target as SNode).name,
-            formatNumber(link.unnormalizedValue),
+            this._formatNumber(link.unnormalizedValue),
           ),
-        nodeAriaLabel: (node: SNode, weight: number, formatNumber: NumberFormatter) =>
-          format(nodeString, node.name, formatNumber(weight)),
+        nodeAriaLabel: (node: SNode, weight: number) => format(nodeString, node.name, this._formatNumber(weight)),
       };
     })(props.accessibility);
     // NOTE: Memoizing the `_createNodes` and `_createLinks` methods would break the hoverability of the chart
     // because the nodes are currently created differently based on the layout information. Hence why we do not
     // memoize these methods (but have stubs for memoizing as the `_fetchNodes` and `_fetchLinks` methods).
-    this._nodeAttributes = memoizeFunction(
-      (
-        nodes: SNode[],
-        nodeAriaLabel: (node: SNode, weight: number, formatNumber: NumberFormatter) => string,
-        formatNumber: NumberFormatter,
-      ) => computeNodeAttributes(nodes, nodeAriaLabel, formatNumber),
+    this._nodeAttributes = memoizeFunction((nodes: SNode[], nodeAriaLabel: (node: SNode, weight: number) => string) =>
+      computeNodeAttributes(nodes, nodeAriaLabel),
     );
     this._fetchNodes = (
       classNames: IProcessedStyleSet<ISankeyChartStyles>,
       nodes: SNode[],
       nodeAttributes: ItemValues<RenderedNodeAttributes>,
       tooltipDiv: TooltipDiv,
-      formatNumber: NumberFormatter,
-    ) => this._createNodes(classNames, nodes, nodeAttributes, tooltipDiv, formatNumber);
+    ) => this._createNodes(classNames, nodes, nodeAttributes, tooltipDiv);
     this._linkAttributes = memoizeFunction(
-      (
-        links: SLink[],
-        linkFrom: (node: SNode) => string,
-        linkAriaLabel: (link: SLink, formatNumber: NumberFormatter) => string,
-        formatNumber: NumberFormatter,
-      ) => computeLinkAttributes(links, linkFrom, linkAriaLabel, formatNumber),
+      (links: SLink[], linkFrom: (node: SNode) => string, linkAriaLabel: (link: SLink) => string) =>
+        computeLinkAttributes(links, linkFrom, linkAriaLabel),
     );
-    this._fetchLinks = (
-      links: SLink[],
-      linkAttributes: LinkItemValues<RenderedLinkAttributes>,
-      formatNumber: NumberFormatter,
-    ) => this._createLinks(links, linkAttributes, formatNumber);
+    this._fetchLinks = (links: SLink[], linkAttributes: LinkItemValues<RenderedLinkAttributes>) =>
+      this._createLinks(links, linkAttributes);
     // Our shorter path to performance is to pre-compute the truncated labels of each node because
     // that should not change based on the position of the mouse. This is a shorter path becase the code which
     // computes the truncated labels creates and destroys a `tempText` element in the DOM. This is causing a
@@ -828,9 +811,10 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
   }
 
   public render(): React.ReactNode {
-    const formatNumber = memoizeFunction((formatter?: NumberFormatter) => {
-      return formatter || this._numberFormatterDefault;
-    })(this.props.formatNumber);
+    this._formatNumber = memoizeFunction((props: ISankeyChartProps) => {
+      const formatter = props.formatNumber;
+      return formatter || ((num: Number | undefined) => num?.toString() || '');
+    })(this.props);
 
     if (!this._isChartEmpty()) {
       const { theme, className, styles, pathColor, colorsForNodes, borderColorsForNodes } = this.props;
@@ -858,16 +842,11 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
       // It might be better to perform this `fetch` within the `_showTooltip` and `_hideTooltip` methods.
       const tooltipDiv = this._fetchTooltip(classNames);
       // Pre-compute some important attributes about nodes, specifically text
-      const nodeAttributes = this._nodeAttributes(nodes, this._accessibility.nodeAriaLabel, formatNumber);
+      const nodeAttributes = this._nodeAttributes(nodes, this._accessibility.nodeAriaLabel);
       // Build the nodes and links as rendered in the UX.
-      const nodeData = this._fetchNodes(classNames, nodes, nodeAttributes, tooltipDiv, formatNumber);
-      const linkAttributes = this._linkAttributes(
-        links,
-        this._strings.linkFrom,
-        this._accessibility.linkAriaLabel,
-        formatNumber,
-      );
-      const linkData = this._fetchLinks(links, linkAttributes, formatNumber);
+      const nodeData = this._fetchNodes(classNames, nodes, nodeAttributes, tooltipDiv);
+      const linkAttributes = this._linkAttributes(links, this._strings.linkFrom, this._accessibility.linkAriaLabel);
+      const linkData = this._fetchLinks(links, linkAttributes);
 
       const calloutProps = {
         isCalloutVisible: state.isCalloutVisible,
@@ -925,8 +904,6 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
       />
     );
   }
-
-  private readonly _numberFormatterDefault: NumberFormatter = (num: Number | undefined) => num?.toString() || '';
 
   private _normalizeSankeyData(
     data: ISankeyChartData,
@@ -990,7 +967,6 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
   private _createLinks(
     dataLinks: SLink[],
     linkAttributes: LinkItemValues<RenderedLinkAttributes>,
-    formatNumber: NumberFormatter,
   ): React.ReactNode[] | undefined {
     if (dataLinks) {
       const linkId = this._linkId;
@@ -1022,9 +998,9 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
               stroke={this._fillStreamBorder(singleLink, gradientUrl)}
               strokeWidth="2"
               strokeOpacity={this._getOpacityStreamBorder(singleLink)}
-              onMouseOver={event => this._onStreamHover(event, singleLink, from, formatNumber)}
+              onMouseOver={event => this._onStreamHover(event, singleLink, from)}
               onMouseOut={onMouseOut}
-              onFocus={event => this._onFocusLink(event, singleLink, from, formatNumber)}
+              onFocus={event => this._onFocusLink(event, singleLink, from)}
               onBlur={this._onBlur}
               fillOpacity={this._getOpacityStream(singleLink)}
               data-is-focusable={true}
@@ -1043,7 +1019,6 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     dataNodes: SNode[],
     nodeAttributes: ItemValues<RenderedNodeAttributes>,
     tooltipDiv: TooltipDiv,
-    formatNumber: NumberFormatter,
   ): React.ReactNode[] | undefined {
     if (dataNodes) {
       const state = this.state;
@@ -1073,7 +1048,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
               width={x1! - x0!}
               fill={this._fillNodeColors(singleNode)}
               id={nodeId}
-              onMouseOver={this._onHover.bind(this, singleNode, formatNumber)}
+              onMouseOver={this._onHover.bind(this, singleNode)}
               onMouseOut={onMouseOut}
               onFocus={this._onCloseCallout.bind(this)}
               stroke={this._fillNodeBorder(singleNode)}
@@ -1115,7 +1090,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
                   fill={textColor}
                   fontSize={14}
                 >
-                  {formatNumber(actualValue)}
+                  {this._formatNumber(actualValue)}
                 </text>
               </g>
             )}
@@ -1136,7 +1111,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     }
   }
 
-  private _onHover(singleNode: SNode, formatNumber: NumberFormatter, mouseEvent: React.MouseEvent<SVGElement>) {
+  private _onHover(singleNode: SNode, mouseEvent: React.MouseEvent<SVGElement>) {
     mouseEvent.persist();
     this._onCloseCallout();
     if (!this.state.selectedState) {
@@ -1152,17 +1127,12 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         isCalloutVisible: singleNode.y1! - singleNode.y0! < MIN_HEIGHT_FOR_TYPE,
         color: singleNode.color,
         xCalloutValue: singleNode.name,
-        yCalloutValue: formatNumber(singleNode.actualValue),
+        yCalloutValue: this._formatNumber(singleNode.actualValue),
       });
     }
   }
 
-  private _onStreamHover(
-    mouseEvent: React.MouseEvent<SVGElement>,
-    singleLink: SLink,
-    from: string,
-    formatNumber: NumberFormatter,
-  ) {
+  private _onStreamHover(mouseEvent: React.MouseEvent<SVGElement>, singleLink: SLink, from: string) {
     mouseEvent.persist();
     this._onCloseCallout();
     if (!this.state.selectedState) {
@@ -1172,7 +1142,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
         selectedNodes: new Set<number>(Array.from(selectedNodes).map(node => node.index!)),
         selectedLinks: new Set<number>(Array.from(selectedLinks).map(link => link.index!)),
         refSelected: mouseEvent,
-        ...linkCalloutAttributes(singleLink, from, formatNumber),
+        ...linkCalloutAttributes(singleLink, from),
       });
     }
   }
@@ -1188,12 +1158,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     }
   }
 
-  private _onFocusLink(
-    element: React.FocusEvent<SVGElement>,
-    singleLink: SLink,
-    from: string,
-    formatNumber: NumberFormatter,
-  ): void {
+  private _onFocusLink(element: React.FocusEvent<SVGElement>, singleLink: SLink, from: string): void {
     // There is a big difference in how "Tab" and the "Arrow keys" are handled in this diagram.
     // In particular, I would expect the "Down" key to be like "Tab", but it jumps a little wildly. I'm not sure
     // if this behavior is an accessiblity violation, but it we might want to investigate it.
@@ -1201,7 +1166,7 @@ export class SankeyChartBase extends React.Component<ISankeyChartProps, ISankeyC
     this._onCloseCallout();
     this.setState({
       refSelected: element.currentTarget,
-      ...linkCalloutAttributes(singleLink, from, formatNumber),
+      ...linkCalloutAttributes(singleLink, from),
     });
   }
 
